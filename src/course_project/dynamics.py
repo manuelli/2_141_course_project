@@ -10,6 +10,7 @@ def make_default_params():
     params['T_2']  = 1/8.846
     params['b'] = 0.1
     params['T'] = params['T_2']
+    params['transmission_loss'] = 0.05
     
     T = params['T']
     
@@ -80,4 +81,80 @@ def impedance_ss_system(params, controller_params):
     
     sys = scipy.signal.lti(A_fb, B, C, D)
     return sys, [A_fb,B,C,D]   
+
+
+
+class SingleDofCoulombFriction(object):
+
+    def __init__(self, params):
+        self._params = params
+        sys, [A,B,C,D] = linear_system_ss_from_params(params)
+        self._A = A
+        self._B = B
+        self._C = C
+        self._D = D
+
+        self._J = params['J']
+        self._k_s = params['k_s']
+        self._b = params['b']
+        self._alpha = params['transmission_loss']
+
+        self.fixture_position_function = None
+        self.motor_torque_function = None
+
+        self._friction_tol = 1e-2
+
+    def dydt(self, t, y):
+
+        """
+        Dynamics system
+        y = [theta, \dot{theta}]
+        """
+        theta = y[0]
+        theta_dot = y[1]
+        x_b, x_b_dot = self.get_fixture_position(t)
+        tau_m = self.get_motor_torque(t,y,x_b, x_b_dot)
+
+        # a should be in the range [0,1]
+        val = tau_m * theta_dot
+        val = theta_dot
+        a = 1/(2.0*self._friction_tol) *(np.clip(val, -self._friction_tol, self._friction_tol) + self._friction_tol)
+
+        
+
+        torque_multiplier = (1-a) * 1.0/(1-self._alpha) + a * (1-self._alpha)
+
+
+        # print a
+        # print "torque_multiplier", torque_multiplier
+
+        # if (tau_m * theta_dot) >= 0:
+        #     torque_multiplier = 1.0/(1-self._alpha)
+        # else:
+        #     torque_multiplier = (1-self._alpha)
+
+        theta_ddot = 1/self._J * (tau_m - self._b * theta_dot - torque_multiplier * self._k_s * (theta + x_b))
+        
+        dydt = np.array([theta_dot, theta_ddot])
+
+        return dydt
+
+    def get_motor_torque(self, t, y, x_b, x_b_dot):
+        return self.motor_torque_function(t, y, x_b, x_b_dot)
+
+    def get_fixture_position(self, t):
+        return self.fixture_position_function(t)
+
+    def simulate(self, t_vec, y0=None, atol=None, rtol=None):
+        if y0 is None:
+            y0 = np.array([0,0])
+
+        y = scipy.integrate.odeint(self.dydt, y0, t_vec, tfirst=True, atol=atol, rtol=rtol)
+
+        return t_vec, y
+
+
+
+
+
     

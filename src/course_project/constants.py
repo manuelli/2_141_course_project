@@ -1,0 +1,1 @@
+SAVE_DIR = "/home/manuelli/Dropbox (MIT)/Robotics Shared/Robotics/Courses/2.141 System Modelling/term_project/images"
